@@ -1,0 +1,74 @@
+OpenCV Marker Tracking
+Annika Hoag
+README updated 08/08/2024
+
+
+
+Libraries/Packages to Install:
+	- OpenCV --> pip install opencv-python
+	- MatPlotLib --> pip install matplotlib
+
+
+
+Keywords/Phrases to Note:
+	1. The 2 base markers that are used as reference points for converting, as well as for offsetting and rotating, should always be Markers 0 and 1. Throughout the comments in the code they will always be refered to as base marker 0 or base marker 1, resepectively. 
+	2. Claudi should always carry Marker 2. In all of the comments this marker is referred to as "Claudi" or "Claudi's marker".
+	3. Every other marker is named by whichever marker index they refer to. Marker 3 corresponds to the 1st marker that isn't a base or Claudi and will always be at index 3 of any lists, Marker 4 goes with the 2nd and will always be at index 4, etc. These markers are optional and any number of them can be created depending on what the user wants (see "How to Run the Program" for more on how the markers work).
+	
+	
+
+Necessary Modifications to Constants When Taking New Videos:
+	- There are a few constant/hard-coded values that may need to be modified when taking new videos or changing the number of markers you want to be tracking.
+	- When taking new videos, you should use the GNSS sensor to note the correct location of every marker (besides Claudi). BASE_MARKER_POS should be changed to contain the new latitude/longitude from this sensor of the base markers, and REAL_MARKER_POS should be changed to contain the new latitude/longitude of every other marker. 
+	- VID should be changed to the string with the name of the new video. Make sure this video is in the same directory as the program.
+	- CSV_FILE should be changed to the string with the name of the CSV file that has Claudi's GNSS data that lines up timewise with VID. NUM_ROWS should be changed if and only if the number of rows in the new CSV file has changed.
+	- NUM_MARKERS should only be changed when changing the number of extra markers in the video. There must always be >=3 markers because of the base markers and Claudi.
+	- Whenever NUM_MARKERS is changed, COLORS must also be changed to contain the same number of color strings as there are markers. I made base marker 0 and 1 be gray and black, respectively, and Claudi be pink, the rest of the markers' colors don't necessarily matter as long as you know which marker is being represented by which color. As it is right now I chose to make the colors be a rainbow so that it's easier to know which is the 1st, 2nd, 3rd, etc. extra marker. Make sure when adding colors to check that MatPlotLib accepts that color string. 
+	- DICT is a dictionary used to create markers and it can contain up to 50 markers, so you won't have to change this unless you want >50 markers.
+	- To generate more or less extra markers, uncomment the command above getImage() (currently line 971) where we call creatMarkers(), and comment out the getImage() command (currently line 975). Make sure to change NUM_MARKERS before running this function. Once you've done this one time for the number of markers you want, you don't have to run it again because the function creates images of the markers in the directory for you to print. Since these markers come from a predefined dictionary, each marker index will always generate the same image. So Marker 0 will always look the same, Marker 1 will alawys look the same and so on. So when we detect the markers later on, the program will know which image corresponds to which marker index. This should be done before recording a new video as you need to re-generate the markers in order to print and place them in the space.
+	
+
+
+How to Run the Program:
+	- To run the program, call the getImage() function at the very last line of the file. The parameter for getImage() should be the video we're reading the images from with the OpenCV function VideoCapture(*videoName*). The getImage() function will call every other function needed.
+	
+	
+	
+Explanation of How the Program Runs (the Succession of the Functions):
+	1. Capturing the image-
+		- getImage() is called, which is our main function, with input being the video we want to read data from. 
+		- A frame from the video is read in as an image using OpenCV, if that was successful the program continues to Step 2, otherwise it continues to Step 7.
+		
+	2. Tracking the markers-
+		- findLoc() is called with input being the name of our image, the frame we captured from the videos, the number representing which frame we're on, and the number of markers we've skipped so far.
+		- OpenCV's ArucoMarker detection function is used to search for markers in the image.
+		- If both base markers and Claudi were found succesfully, then all of the markers detected are put into a list containing the coordinates of that marker's center in pixel units. 
+		- Using the hard-coded latitude/longitude location of both base markers, a scale factor is calculated to convert from pixel units to meters. Every marker location that was found is then converted into meters using this scale factor.
+		- The converted location and time stamp are all written to a CSV file containing all of the tracked locations, or "skipped" is written for a marker that was unable to be detected.
+		- The list of locations in meters, the timestamp of the frame (also calculated in findLoc), and the modified skip count is returned. The list returned is nested, with each index containing a list of size 2 representing the x and y coordinates of the marker at that index. So at index 0, there is a list containing the coordinates for Marker 0, etc. The list is formatted like: [[x0, y0], [x1, y1], [x2, y2]...] for every marker. If a marker failed to be detected instead of an [x,y] format, that index will contain [None, None]. 
+		- After findLoc() is completed, the returned list of locations is shifted based on any camera movement that may have occurred since the first time each of the markers were detected.
+		- Later, the new detected positions are added to a list allMeters that contains all coordinates that have been tracked in meters as well as the correct locations.
+		
+	3. Updating Claudi's correct locations-
+		- Based on the timestamp returned from findLoc(), we determine if the time of our current frame now lines up with the time in the next row of Claudi's CSV file. 
+		- If it is we convert the latitude/longitude in that row to meters and add it to our list of correct marker locations (more on the structure of this in Step 4). 
+		
+	4. Organizing the correct marker locations-
+		- The correct marker locations are stored in a nested list formatted just like the list returned in findLoc (see last bullet of Step 2). The only difference is at index 2, where Claudi's locations are stored. Instead of there just being a simple [x, y] format, index 2 contains another nested list so that we're able to plot the trajectory of Claudi's correct location. 
+		- The list of correct marker locations is formatted like: [[x0, y0], [x1, y1], [[x2_1, y2_1], [x2_2, y2_2], [x2_3, y2_3]...], [x3, y3], [x4, y4]...]. 
+		- After the latitude/longitudes of the correct markers are converted to meters, they are offset to match with the tracked locations that were converted from pixels into meters. The offset function uses base marker 0's tracked location and hard-coded location to calculate the amount of offset that has to be done to all of the markers. 
+		- Since the correct locations are hard-coded, the only way for them to fail to be detected is if base marker 0 failed to be detected. In this case, every single coordinate in the list of locations is set to [None, None]. The list gets reset every frame to account for situations like this.
+		- The correct locations are written to a CSV file at each frame along with the frame number and timestamp. If the correct locations failed to be detected "skipped" is written.
+		- This nested list eventually is put in the front of allMeters in order to be plotted with the tracked locations.
+		
+	5. Calculating distances between tracked and correct locations-
+		- Using allMeters, a list of the distances (named allDistances) between each marker's tracked and correct location is calculated. 
+		- The list allDistances is nested, at each index is a list of all of the distances that have been calculated between the tracked and correct locations of the marker corresponding to that index. So at index 0 is a list of the distances calculated between Marker 0's tracked and correct locations, etc. If a marker failed to be detected, then None is added to the inner list of distances. 
+		- The distances are written to a CSV file afterwards.
+		
+	6. Plotting the graphs-
+		- Once the lists allMeters and allDistances are done being set up, the results are plotted using MatPlotLib 
+		- For the graph with meters locations, the loops are set up so that every occurence of each marker is displayed in the respective color from COLORS. There is an outer loop that goes through the number of markers (i.e. the number of colors), and there is an inner loop that goes through all of the meters coordinates, incrementing by the number of markers so that only the points representing one of the markers is being added to the plot at a time. In other words, the program plots every point for one color, thne every point for another color, until the end of the list. The correct markers are plotted once with a triangle, and every tracked location is plotted as a circle.
+		- For the boxplots, the allDistances list just has to be inputted into the boxplot function from MatPlotLib.
+	
+	7. Once all of the frames of the video have been read in, we write the number of markers that failed to be detected throughout the video to a text file. We also write the number of frames that were inspected, and how many opportunities for skipping a marker there were. Then, the graphs for meters locations and the boxplots for the last frame are displayed.
